@@ -1,5 +1,6 @@
 import { ThemeProvider, CssBaseline } from "@mui/material";
 import { BrowserRouter } from "react-router-dom";
+import { AuthProvider } from "../contexts/AuthProvider";
 import theme from "./theme";
 import Router from "./router";
 
@@ -8,7 +9,9 @@ export default function App() {
     <ThemeProvider theme={theme}>
       <CssBaseline />
       <BrowserRouter>
-        <Router />
+        <AuthProvider>
+          <Router />
+        </AuthProvider>
       </BrowserRouter>
     </ThemeProvider>
   );
