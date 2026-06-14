@@ -115,13 +115,33 @@ All amounts are stored in the database in **IDR** (Indonesian Rupiah), the base 
 Schema lives in `supabase/migrations/0004_currency.sql` (run after 0001-0003). It adds:
 
 - `profiles.currency` — the signed-in user's display currency (`'IDR'` or `'SGD'`, defaults to `'IDR'`).
-- `public.currency_rates` — a singleton table (`id = 1`) holding `sgd_to_idr`, the current SGD → IDR rate. Readable by all authenticated users; only admins can update it.
+- `public.currency_rates` — a singleton table (`id = 1`) holding `sgd_to_idr`, the current SGD → IDR rate. Readable by all authenticated users; only admins can update it. `supabase/migrations/0006_investment.sql` adds `usd_to_idr` to this table for the Investment app.
 
 - **`src/apps/finance/hooks/useCurrency.js`** — `{ currency, rate, loading, fromBase, toBase, format }`. `fromBase`/`toBase` convert amounts between IDR (storage) and the user's display currency; `format` converts and formats in one step.
 - **`src/apps/finance/features/settings/SettingsPage.jsx`** — currency picker that updates `profiles.currency`.
-- **`src/features/admin/AdminPage.jsx`** — "Currency rate" section where admins set `sgd_to_idr`.
+- **`src/features/admin/AdminPage.jsx`** — "Currency rate" section where admins set `sgd_to_idr` and `usd_to_idr`.
 
 All amount inputs/outputs across Budget, Transactions, and Home go through `useCurrency()`, so switching currency on the Finance Settings page immediately changes how amounts are entered and displayed everywhere — the underlying IDR values in the database don't change.
+
+---
+
+## Investment features
+
+The **Investment app**, mounted at `/investment`, tracks multi-currency capital and portfolio "plan sheets". Schema lives in `supabase/migrations/0006_investment.sql` (run after 0001-0005), which adds `currency_rates.usd_to_idr` and four new per-user tables — `investment_wallets`, `investment_plan_sheets`, `investment_instruments`, `investment_reports` — plus a private `investment-reports` Storage bucket, all RLS-scoped to `auth.uid()`.
+
+- **`src/apps/investment/features/dashboard/DashboardPage.jsx`** (`/investment`) — **Wallets**: one capital balance per currency (IDR/SGD/USD), editable and saved to `investment_wallets`. **Total capital**: the sum of all wallet balances, converted into whichever of the three currencies is selected. **Plan sheets**: list of the user's plan sheets (each with its own currency) showing total capital, total profit, and final result; create new sheets here.
+- **`src/apps/investment/features/sheets/PlanSheetDetailPage.jsx`** (`/investment/sheets/:id`) — editable table of **instruments** (code, amount invested, target in/out, actual in/out), with profit % and result computed automatically once both actuals are filled in. Totals for the sheet (total capital, total profit, final result) are shown below the table.
+- **`src/apps/investment/features/reports/ReportsPage.jsx`** (`/investment/reports`) — upload, download, and delete PDF investment-analysis reports (stored in the `investment-reports` bucket).
+
+### Profit & totals formulas
+
+For each instrument: `profit % = (actual_out - actual_in) / actual_in * 100` (only once both actuals are set); `profit (money) = amount_invested * profit% / 100`; `result = amount_invested + profit`. For a plan sheet: `total capital = sum(amount_invested)`, `total profit = sum(profit)`, `final result = total capital + total profit`.
+
+Shared within the Investment app (`src/apps/investment/`):
+
+- **`lib/currency.js`** — `INVESTMENT_CURRENCIES` (IDR/SGD/USD), `formatCurrency`, and `convertAmount(amount, from, to, rates)`.
+- **`lib/instruments.js`** — `computeProfitPercent(instrument)` and `computeSheetTotals(instruments)`.
+- **`hooks/useExchangeRates.js`** — `{ sgdToIdr, usdToIdr, loading }`, the shared admin-managed rates from `currency_rates`.
 
 ---
 
@@ -176,23 +196,35 @@ src/
 │   └── supabase.js       # Configured Supabase client
 │
 └── apps/                  # One folder per installed app
-    └── finance/
-        ├── FinanceApp.jsx   # Nested <Routes> for /finance/*, wrapped in AppShell
-        ├── navConfig.js     # Finance's own nav items (Apps, Home, Transactions, Budget, Settings)
-        ├── components/
-        │   └── PlanVsActualList.jsx # Renders buildPlanVsActualRows() output
+    ├── finance/
+    │   ├── FinanceApp.jsx   # Nested <Routes> for /finance/*, wrapped in AppShell
+    │   ├── navConfig.js     # Finance's own nav items (Apps, Home, Transactions, Budget, Settings)
+    │   ├── components/
+    │   │   └── PlanVsActualList.jsx # Renders buildPlanVsActualRows() output
+    │   ├── features/
+    │   │   ├── home/HomePage.jsx           # /finance — dashboard
+    │   │   ├── transactions/TransactionsPage.jsx # /finance/transactions
+    │   │   ├── budget/BudgetPage.jsx        # /finance/budget
+    │   │   ├── categories/CategoriesPage.jsx # /finance/categories
+    │   │   └── settings/SettingsPage.jsx     # /finance/settings — currency
+    │   ├── hooks/
+    │   │   ├── useCategories.js  # { categories, incomeCategories, expenseCategories, dailyBudgetCategories, loading, reload }
+    │   │   └── useCurrency.js    # { currency, rate, loading, fromBase, toBase, format }
+    │   └── lib/
+    │       ├── format.js          # formatCurrency, CURRENCIES, conversion + pay-period helpers
+    │       └── planVsActual.js     # buildPlanVsActualRows()
+    └── investment/
+        ├── InvestmentApp.jsx   # Nested <Routes> for /investment/*, wrapped in AppShell
+        ├── navConfig.js        # Investment's own nav items (Apps, Dashboard, Reports)
         ├── features/
-        │   ├── home/HomePage.jsx           # /finance — dashboard
-        │   ├── transactions/TransactionsPage.jsx # /finance/transactions
-        │   ├── budget/BudgetPage.jsx        # /finance/budget
-        │   ├── categories/CategoriesPage.jsx # /finance/categories
-        │   └── settings/SettingsPage.jsx     # /finance/settings — currency
+        │   ├── dashboard/DashboardPage.jsx     # /investment — wallets, total capital, plan sheets
+        │   ├── sheets/PlanSheetDetailPage.jsx  # /investment/sheets/:id — instruments table + totals
+        │   └── reports/ReportsPage.jsx          # /investment/reports — PDF upload/download/delete
         ├── hooks/
-        │   ├── useCategories.js  # { categories, incomeCategories, expenseCategories, dailyBudgetCategories, loading, reload }
-        │   └── useCurrency.js    # { currency, rate, loading, fromBase, toBase, format }
+        │   └── useExchangeRates.js  # { sgdToIdr, usdToIdr, loading }
         └── lib/
-            ├── format.js          # formatCurrency, CURRENCIES, conversion + pay-period helpers
-            └── planVsActual.js     # buildPlanVsActualRows()
+            ├── currency.js     # INVESTMENT_CURRENCIES, formatCurrency, convertAmount
+            └── instruments.js  # computeProfitPercent, computeSheetTotals
 ```
 
 ---

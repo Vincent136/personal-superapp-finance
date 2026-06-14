@@ -34,6 +34,7 @@ export default function AdminPage() {
   const [submitting, setSubmitting] = useState(false);
 
   const [sgdToIdr, setSgdToIdr] = useState("");
+  const [usdToIdr, setUsdToIdr] = useState("");
   const [rateLoading, setRateLoading] = useState(true);
   const [rateError, setRateError] = useState(null);
   const [rateMessage, setRateMessage] = useState(null);
@@ -63,13 +64,17 @@ export default function AdminPage() {
 
     supabase
       .from("currency_rates")
-      .select("sgd_to_idr")
+      .select("sgd_to_idr, usd_to_idr")
       .eq("id", 1)
       .single()
       .then(({ data, error }) => {
         if (!active) return;
-        if (error) setRateError(error.message);
-        else setSgdToIdr(String(data.sgd_to_idr));
+        if (error) {
+          setRateError(error.message);
+        } else {
+          setSgdToIdr(String(data.sgd_to_idr));
+          setUsdToIdr(String(data.usd_to_idr));
+        }
         setRateLoading(false);
       });
 
@@ -131,7 +136,11 @@ export default function AdminPage() {
 
     const { error } = await supabase
       .from("currency_rates")
-      .update({ sgd_to_idr: Number(sgdToIdr), updated_at: new Date().toISOString() })
+      .update({
+        sgd_to_idr: Number(sgdToIdr),
+        usd_to_idr: Number(usdToIdr),
+        updated_at: new Date().toISOString(),
+      })
       .eq("id", 1);
 
     setSavingRate(false);
@@ -230,7 +239,8 @@ export default function AdminPage() {
         Currency rate
       </Typography>
       <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-        Used to convert amounts between Indonesian Rupiah (IDR) and Singapore Dollar (SGD).
+        Used to convert amounts between Indonesian Rupiah (IDR), Singapore Dollar (SGD), and US
+        Dollar (USD).
       </Typography>
 
       {rateError && (
@@ -250,12 +260,21 @@ export default function AdminPage() {
         </Box>
       ) : (
         <Box component="form" onSubmit={handleSaveRate}>
-          <Stack direction="row" spacing={2} alignItems="flex-start">
+          <Stack direction="row" spacing={2} alignItems="flex-start" flexWrap="wrap">
             <TextField
               type="number"
               label="1 SGD = ? IDR"
               value={sgdToIdr}
               onChange={(event) => setSgdToIdr(event.target.value)}
+              size="small"
+              required
+              slotProps={{ input: { inputProps: { min: 0, step: "0.0001" } } }}
+            />
+            <TextField
+              type="number"
+              label="1 USD = ? IDR"
+              value={usdToIdr}
+              onChange={(event) => setUsdToIdr(event.target.value)}
               size="small"
               required
               slotProps={{ input: { inputProps: { min: 0, step: "0.0001" } } }}

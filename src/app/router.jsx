@@ -7,6 +7,7 @@ import ProfilePage from "../features/profile/ProfilePage";
 import AdminPage from "../features/admin/AdminPage";
 import NotFoundPage from "../features/not-found/NotFoundPage";
 import FinanceApp from "../apps/finance/FinanceApp";
+import InvestmentApp from "../apps/investment/InvestmentApp";
 
 // Add new apps under src/apps/<id>/ (with their own routes + navConfig),
 // register them in appsConfig.js, and add a top-level "/<id>/*" route here.
@@ -21,6 +22,7 @@ export default function Router() {
           <Route path="/admin" element={<AdminPage />} />
         </Route>
         <Route path="/finance/*" element={<FinanceApp />} />
+        <Route path="/investment/*" element={<InvestmentApp />} />
         <Route path="*" element={<NotFoundPage />} />
       </Route>
     </Routes>
