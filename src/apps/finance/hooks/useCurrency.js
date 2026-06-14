@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
-import { supabase } from "../lib/supabase";
-import { useProfile } from "./useProfile";
+import { supabase } from "../../../lib/supabase";
+import { useProfile } from "../../../hooks/useProfile";
 import { convertFromIDR, convertToIDR, formatCurrency } from "../lib/format";
 
 // All amounts in the database are stored in IDR. This hook exposes the

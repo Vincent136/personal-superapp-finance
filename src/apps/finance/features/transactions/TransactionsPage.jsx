@@ -18,12 +18,12 @@ import {
   Typography,
 } from "@mui/material";
 import DeleteIcon from "@mui/icons-material/Delete";
-import PageHeader from "../../components/common/PageHeader";
-import { supabase } from "../../lib/supabase";
-import { useAuth } from "../../hooks/useAuth";
+import PageHeader from "../../../../components/common/PageHeader";
+import { supabase } from "../../../../lib/supabase";
+import { useAuth } from "../../../../hooks/useAuth";
 import { useCategories } from "../../hooks/useCategories";
 import { useCurrency } from "../../hooks/useCurrency";
-import { convertToIDR, currentMonthString, endOfMonth, monthToDate } from "../../lib/format";
+import { convertToIDR, currentPeriod, formatPeriodRange, periodRange } from "../../lib/format";
 
 function todayString() {
   const now = new Date();
@@ -54,16 +54,17 @@ export default function TransactionsPage() {
 
   // --- Transaction list ---
   const [transactions, setTransactions] = useState([]);
-  const [listMonth, setListMonth] = useState(currentMonthString());
+  const [listMonth, setListMonth] = useState(currentPeriod());
   const [listLoading, setListLoading] = useState(true);
   const [listError, setListError] = useState(null);
 
-  const loadTransactions = async (month) => {
+  const loadTransactions = async (period) => {
+    const { start, end } = periodRange(period);
     const { data, error } = await supabase
       .from("transactions")
       .select("id, type, amount, occurred_on, note, categories(name)")
-      .gte("occurred_on", monthToDate(month))
-      .lte("occurred_on", endOfMonth(month))
+      .gte("occurred_on", start)
+      .lte("occurred_on", end)
       .order("occurred_on", { ascending: false })
       .order("created_at", { ascending: false });
 
@@ -76,12 +77,13 @@ export default function TransactionsPage() {
 
   useEffect(() => {
     let active = true;
+    const { start, end } = periodRange(listMonth);
 
     supabase
       .from("transactions")
       .select("id, type, amount, occurred_on, note, categories(name)")
-      .gte("occurred_on", monthToDate(listMonth))
-      .lte("occurred_on", endOfMonth(listMonth))
+      .gte("occurred_on", start)
+      .lte("occurred_on", end)
       .order("occurred_on", { ascending: false })
       .order("created_at", { ascending: false })
       .then(({ data, error }) => {
@@ -223,7 +225,7 @@ export default function TransactionsPage() {
 
       <Divider sx={{ mb: 3 }} />
 
-      <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 2 }}>
+      <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 0.5 }}>
         <Typography variant="h6">History</Typography>
         <TextField
           type="month"
@@ -234,6 +236,9 @@ export default function TransactionsPage() {
           slotProps={{ inputLabel: { shrink: true } }}
         />
       </Stack>
+      <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+        {formatPeriodRange(listMonth)}
+      </Typography>
 
       {listError && (
         <Alert severity="error" sx={{ mb: 2 }}>
@@ -247,7 +252,7 @@ export default function TransactionsPage() {
         </Box>
       ) : transactions.length === 0 ? (
         <Typography variant="body2" color="text.secondary">
-          No transactions for this month yet.
+          No transactions for this period yet.
         </Typography>
       ) : (
         <List disablePadding>

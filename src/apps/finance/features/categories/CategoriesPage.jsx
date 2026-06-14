@@ -9,16 +9,18 @@ import {
   List,
   ListItem,
   ListItemText,
+  Switch,
   TextField,
+  Tooltip,
   Typography,
 } from "@mui/material";
 import CheckIcon from "@mui/icons-material/Check";
 import CloseIcon from "@mui/icons-material/Close";
 import DeleteIcon from "@mui/icons-material/Delete";
 import EditIcon from "@mui/icons-material/Edit";
-import PageHeader from "../../components/common/PageHeader";
-import { supabase } from "../../lib/supabase";
-import { useAuth } from "../../hooks/useAuth";
+import PageHeader from "../../../../components/common/PageHeader";
+import { supabase } from "../../../../lib/supabase";
+import { useAuth } from "../../../../hooks/useAuth";
 import { useCategories } from "../../hooks/useCategories";
 
 function CategorySection({ title, type, items, onChanged }) {
@@ -92,6 +94,21 @@ function CategorySection({ title, type, items, onChanged }) {
     onChanged();
   };
 
+  const handleToggleDailyBudget = async (id, isDailyBudget) => {
+    setError(null);
+    const { error } = await supabase
+      .from("categories")
+      .update({ is_daily_budget: isDailyBudget })
+      .eq("id", id);
+
+    if (error) {
+      setError(error.message);
+      return;
+    }
+
+    onChanged();
+  };
+
   return (
     <Box sx={{ mb: 4 }}>
       <Typography variant="h6" gutterBottom>
@@ -114,6 +131,7 @@ function CategorySection({ title, type, items, onChanged }) {
             <ListItem
               key={category.id}
               divider
+              sx={{ pr: type === "expense" && editingId !== category.id ? 18 : 12 }}
               secondaryAction={
                 editingId === category.id ? (
                   <>
@@ -126,6 +144,18 @@ function CategorySection({ title, type, items, onChanged }) {
                   </>
                 ) : (
                   <>
+                    {type === "expense" && (
+                      <Tooltip title="Count toward daily budget (food, groceries, transport)">
+                        <Switch
+                          size="small"
+                          checked={!!category.is_daily_budget}
+                          onChange={(event) =>
+                            handleToggleDailyBudget(category.id, event.target.checked)
+                          }
+                          inputProps={{ "aria-label": "Daily budget" }}
+                        />
+                      </Tooltip>
+                    )}
                     <IconButton edge="end" aria-label="edit" onClick={() => startEdit(category)}>
                       <EditIcon />
                     </IconButton>

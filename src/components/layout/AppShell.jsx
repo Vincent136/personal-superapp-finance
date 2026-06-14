@@ -7,18 +7,21 @@ const SIDE_NAV_WIDTH = 240;
 const BOTTOM_NAV_HEIGHT = 56;
 
 /**
- * AppShell — top-level layout wrapper.
+ * AppShell — per-app layout wrapper.
  *
  * Mobile  (< md): full-width content + fixed BottomNav
  * Desktop (≥ md): fixed SideNav on the left + scrollable content area
+ *
+ * `navItems` and `title` are app-specific (see e.g. src/apps/finance/navConfig.js)
+ * so each app inside the super app can define its own section navigation.
  */
-export default function AppShell({ children }) {
+export default function AppShell({ children, navItems, title }) {
   const theme = useTheme();
   const isDesktop = useMediaQuery(theme.breakpoints.up("md"));
 
   return (
     <Box sx={{ display: "flex", height: "100dvh", overflow: "hidden" }}>
-      {isDesktop && <SideNav width={SIDE_NAV_WIDTH} />}
+      {isDesktop && <SideNav width={SIDE_NAV_WIDTH} items={navItems} title={title} />}
 
       <Box
         component="main"
@@ -34,7 +37,7 @@ export default function AppShell({ children }) {
         {children}
       </Box>
 
-      {!isDesktop && <BottomNav />}
+      {!isDesktop && <BottomNav items={navItems} />}
     </Box>
   );
 }

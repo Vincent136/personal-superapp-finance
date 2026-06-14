@@ -17,12 +17,14 @@ import {
   Typography,
 } from "@mui/material";
 import DeleteIcon from "@mui/icons-material/Delete";
+import { useNavigate } from "react-router-dom";
 import PageHeader from "../../components/common/PageHeader";
 import { supabase } from "../../lib/supabase";
 import { useAuth } from "../../hooks/useAuth";
 
 export default function AdminPage() {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const [entries, setEntries] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -147,6 +149,7 @@ export default function AdminPage() {
       <PageHeader
         title="Admin Dashboard"
         subtitle="Manage which email addresses are allowed to register."
+        action={<Button onClick={() => navigate("/")}>Back to Apps</Button>}
       />
 
       {error && (

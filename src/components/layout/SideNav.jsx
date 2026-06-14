@@ -8,9 +8,8 @@ import {
   Typography,
 } from "@mui/material";
 import { useLocation, useNavigate } from "react-router-dom";
-import { NAV_ITEMS } from "../../app/navConfig";
 
-export default function SideNav({ width = 240 }) {
+export default function SideNav({ width = 240, items, title }) {
   const location = useLocation();
   const navigate = useNavigate();
 
@@ -31,13 +30,12 @@ export default function SideNav({ width = 240 }) {
         overflowY: "auto",
       }}
     >
-      {/* Replace "App Name" with your brand / logo component */}
       <Typography variant="h6" fontWeight={700} sx={{ px: 2, mb: 3 }}>
-        App Name
+        {title}
       </Typography>
 
       <List disablePadding>
-        {NAV_ITEMS.map(({ label, path, icon: Icon }) => {
+        {items.map(({ label, path, icon: Icon }) => {
           const active = location.pathname === path;
           return (
             <ListItem key={path} disablePadding sx={{ mb: 0.5 }}>
