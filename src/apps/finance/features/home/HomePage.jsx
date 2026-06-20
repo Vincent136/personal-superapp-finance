@@ -1,10 +1,12 @@
 import { useEffect, useState } from "react";
-import { Alert, Box, Card, CardContent, CircularProgress, Typography } from "@mui/material";
+import { Alert, Box, Button, Card, CardContent, CircularProgress, Divider, Stack, Typography } from "@mui/material";
+import { useNavigate } from "react-router-dom";
 import PageHeader from "../../../../components/common/PageHeader";
 import PlanVsActualList from "../../components/PlanVsActualList";
 import { supabase } from "../../../../lib/supabase";
 import { useCategories } from "../../hooks/useCategories";
 import { useCurrency } from "../../hooks/useCurrency";
+import { useCurrencyConfig } from "../../../../hooks/useCurrencyConfig";
 import { buildPlanVsActualRows } from "../../lib/planVsActual";
 import {
   currentPeriod,
@@ -16,8 +18,10 @@ import {
 } from "../../lib/format";
 
 export default function HomePage() {
+  const navigate = useNavigate();
   const { categories, dailyBudgetCategories, loading: categoriesLoading } = useCategories();
   const { format, loading: currencyLoading } = useCurrency();
+  const { currencies, wallets, toIDR, formatIDR, formatAmount } = useCurrencyConfig();
 
   const [budgetItems, setBudgetItems] = useState([]);
   const [transactions, setTransactions] = useState([]);
@@ -33,11 +37,11 @@ export default function HomePage() {
     Promise.all([
       supabase
         .from("budget_items")
-        .select("category_id, amount")
+        .select("category_id, amount, currency")
         .eq("month", periodKey(period)),
       supabase
         .from("transactions")
-        .select("category_id, type, amount, occurred_on")
+        .select("category_id, type, amount, currency, occurred_on")
         .gte("occurred_on", start)
         .lte("occurred_on", end),
     ]).then(([budgetRes, txRes]) => {
@@ -70,29 +74,25 @@ export default function HomePage() {
   }
 
   const totalIncome = transactions
-    .filter((transaction) => transaction.type === "income")
-    .reduce((sum, transaction) => sum + Number(transaction.amount), 0);
+    .filter((t) => t.type === "income")
+    .reduce((sum, t) => sum + toIDR(Number(t.amount), t.currency ?? "IDR"), 0);
   const totalExpense = transactions
-    .filter((transaction) => transaction.type === "expense")
-    .reduce((sum, transaction) => sum + Number(transaction.amount), 0);
+    .filter((t) => t.type === "expense")
+    .reduce((sum, t) => sum + toIDR(Number(t.amount), t.currency ?? "IDR"), 0);
   const net = totalIncome - totalExpense;
 
-  const plannedByCategory = new Map(
-    budgetItems.map((item) => [item.category_id, Number(item.amount)]),
-  );
   const dailyBudgetCategoryIds = new Set(dailyBudgetCategories.map((category) => category.id));
-  const dailyBudgetPlanned = dailyBudgetCategories.reduce(
-    (sum, category) => sum + (plannedByCategory.get(category.id) ?? 0),
-    0,
-  );
+  const dailyBudgetPlanned = budgetItems
+    .filter((item) => dailyBudgetCategoryIds.has(item.category_id))
+    .reduce((sum, item) => sum + toIDR(Number(item.amount), item.currency ?? "IDR"), 0);
   const dailyBudgetActual = transactions
-    .filter((transaction) => dailyBudgetCategoryIds.has(transaction.category_id))
-    .reduce((sum, transaction) => sum + Number(transaction.amount), 0);
+    .filter((t) => dailyBudgetCategoryIds.has(t.category_id))
+    .reduce((sum, t) => sum + toIDR(Number(t.amount), t.currency ?? "IDR"), 0);
   const daysLeft = daysUntilPayday(period);
   const dailyBudget = (dailyBudgetPlanned - dailyBudgetActual) / daysLeft;
 
   const { rows, totalPlannedIncome, totalActualIncome, totalPlannedExpense, totalActualExpense } =
-    buildPlanVsActualRows(categories, budgetItems, transactions);
+    buildPlanVsActualRows(categories, budgetItems, transactions, toIDR);
 
   return (
     <Box sx={{ p: { xs: 2, md: 3 } }}>
@@ -102,6 +102,45 @@ export default function HomePage() {
         <Alert severity="error" sx={{ mb: 2 }}>
           {error}
         </Alert>
+      )}
+
+      {/* Cash wallets by currency */}
+      {currencies.some((c) => (wallets[c.code] ?? 0) > 0 || c.code === "IDR") && (
+        <Card sx={{ mb: 3 }}>
+          <CardContent sx={{ pb: "12px !important" }}>
+            <Stack direction="row" justifyContent="space-between" alignItems="center" mb={1}>
+              <Typography variant="subtitle2" fontWeight={700}>Cash Wallets</Typography>
+              <Button size="small" onClick={() => navigate("/wallet/wallets")}>Manage →</Button>
+            </Stack>
+            <Stack
+              direction="row"
+              spacing={0}
+              divider={<Divider orientation="vertical" flexItem />}
+              sx={{ overflowX: "auto" }}
+            >
+              {currencies
+                .filter((c) => (wallets[c.code] ?? 0) > 0 || c.code === "IDR")
+                .map((c) => {
+                  const bal = wallets[c.code] ?? 0;
+                  return (
+                    <Box key={c.code} sx={{ flex: "0 0 auto", px: 2, textAlign: "center", minWidth: 90 }}>
+                      <Typography variant="caption" color="text.secondary" display="block">
+                        {c.flag} {c.code}
+                      </Typography>
+                      <Typography variant="body2" fontWeight={700} noWrap>
+                        {formatAmount(bal, c.code)}
+                      </Typography>
+                      {c.code !== "IDR" && (
+                        <Typography variant="caption" color="text.secondary" noWrap>
+                          ≈ {formatIDR(toIDR(bal, c.code))}
+                        </Typography>
+                      )}
+                    </Box>
+                  );
+                })}
+            </Stack>
+          </CardContent>
+        </Card>
       )}
 
       <Box

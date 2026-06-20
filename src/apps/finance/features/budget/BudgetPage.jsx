@@ -3,9 +3,14 @@ import {
   Alert,
   Box,
   Button,
+  Card,
+  CardContent,
   Chip,
   CircularProgress,
   Divider,
+  IconButton,
+  LinearProgress,
+  MenuItem,
   Stack,
   Table,
   TableBody,
@@ -17,7 +22,9 @@ import {
 } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
 import { BarChart } from "@mui/x-charts/BarChart";
-import { Link as RouterLink } from "react-router-dom";
+import { Link as RouterLink, useNavigate } from "react-router-dom";
+import OpenInNewIcon from "@mui/icons-material/OpenInNew";
+import { useCurrencyConfig } from "../../../../hooks/useCurrencyConfig";
 import PageHeader from "../../../../components/common/PageHeader";
 import PlanVsActualList from "../../components/PlanVsActualList";
 import { supabase } from "../../../../lib/supabase";
@@ -27,7 +34,6 @@ import { useCurrency } from "../../hooks/useCurrency";
 import { buildPlanVsActualRows } from "../../lib/planVsActual";
 import {
   convertFromIDR,
-  convertToIDR,
   currentPeriod,
   formatCurrency,
   formatPeriodRange,
@@ -43,32 +49,200 @@ function todayString() {
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
 }
 
-function CategoryAmountRow({ category, amount, step, onChange }) {
+function CategoryAmountRow({
+  category,
+  amount,
+  currency,
+  currencies,
+  toIDR,
+  formatIDR,
+  onAmountChange,
+  onCurrencyChange,
+}) {
+  const step = currency === "IDR" ? "1000" : currency === "JPY" ? "1" : "0.01";
+  const idrEquiv =
+    currency !== "IDR" && Number(amount) > 0
+      ? formatIDR(toIDR(Number(amount), currency))
+      : null;
+
   return (
-    <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ py: 0.5 }}>
-      <Typography variant="body2">{category.name}</Typography>
-      <TextField
-        type="number"
-        size="small"
-        value={amount}
-        onChange={onChange}
-        slotProps={{ input: { inputProps: { min: 0, step } } }}
-        sx={{ width: 160 }}
-      />
+    <Stack
+      direction="row"
+      alignItems="flex-start"
+      justifyContent="space-between"
+      sx={{ py: 0.5 }}
+      gap={1}
+    >
+      <Typography variant="body2" sx={{ flex: 1, pt: 1 }}>
+        {category.name}
+      </Typography>
+      <Stack direction="row" spacing={1} alignItems="flex-start">
+        <TextField
+          select
+          size="small"
+          value={currency}
+          onChange={(e) => onCurrencyChange(e.target.value)}
+          sx={{ width: 88 }}
+        >
+          {currencies.map((c) => (
+            <MenuItem key={c.code} value={c.code}>
+              {c.code}
+            </MenuItem>
+          ))}
+        </TextField>
+        <Box>
+          <TextField
+            type="number"
+            size="small"
+            value={amount}
+            onChange={(e) => onAmountChange(e.target.value)}
+            slotProps={{ input: { inputProps: { min: 0, step } } }}
+            sx={{ width: 140 }}
+          />
+          {idrEquiv && (
+            <Typography variant="caption" color="text.secondary" display="block" mt={0.25}>
+              ≈ {idrEquiv}
+            </Typography>
+          )}
+        </Box>
+      </Stack>
     </Stack>
+  );
+}
+
+function TripBudgetSection() {
+  const navigate = useNavigate();
+  const { user } = useAuth();
+  const { toIDR, formatIDR } = useCurrencyConfig();
+  const [linked, setLinked] = useState([]);
+
+  useEffect(() => {
+    if (!user) return;
+    supabase
+      .from("trips")
+      .select("id, title, status, data")
+      .eq("user_id", user.id)
+      .then(({ data }) => {
+        const trips = (data ?? []).map((r) => ({ id: r.id, title: r.title, status: r.status, ...r.data }));
+        setLinked(trips.filter((t) => t.financeCategory));
+      });
+  }, [user]);
+
+  if (linked.length === 0) return null;
+
+  return (
+    <Box sx={{ mb: 4 }}>
+      <Typography variant="h6" gutterBottom>
+        Trip Linked Budgets
+      </Typography>
+      <Alert severity="info" icon={false} sx={{ mb: 2, py: 0.5 }}>
+        Read-only — manage these in the{" "}
+        <RouterLink to="/trip/budget" style={{ color: "inherit" }}>
+          Trip app
+        </RouterLink>
+        . Amounts converted to IDR using your Wallet rates.
+      </Alert>
+      <Stack spacing={1.5}>
+        {linked.map((trip) => {
+          const cur = trip.currency ?? "IDR";
+          const planned = toIDR(trip.plannedBudget ?? 0, cur);
+          const spent = toIDR(
+            (trip.expenses ?? [])
+              .filter((e) => e.type === "actual")
+              .reduce((s, e) => s + (e.amount ?? 0), 0),
+            cur,
+          );
+          const remaining = planned - spent;
+          const pct = planned > 0 ? Math.min((spent / planned) * 100, 100) : 0;
+          const over = spent > planned && planned > 0;
+
+          return (
+            <Card key={trip.id} variant="outlined">
+              <CardContent sx={{ pb: "12px !important" }}>
+                <Stack direction="row" justifyContent="space-between" alignItems="flex-start">
+                  <Box sx={{ flex: 1 }}>
+                    <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" gap={0.5}>
+                      <Typography variant="subtitle2" fontWeight={700}>
+                        {trip.title}
+                      </Typography>
+                      <Chip label="Trip" size="small" color="info" variant="outlined" />
+                      <Chip label={trip.financeCategory} size="small" variant="outlined" />
+                    </Stack>
+                    {trip.destination && (
+                      <Typography variant="caption" color="text.secondary">
+                        📍 {trip.destination}
+                      </Typography>
+                    )}
+                  </Box>
+                  <IconButton size="small" onClick={() => navigate(`/trip/${trip.id}`)}>
+                    <OpenInNewIcon fontSize="small" />
+                  </IconButton>
+                </Stack>
+
+                <Stack direction="row" spacing={3} mt={1}>
+                  <Box>
+                    <Typography variant="caption" color="text.secondary">
+                      Planned
+                    </Typography>
+                    <Typography variant="body2" fontWeight={600}>
+                      {formatIDR(planned)}
+                    </Typography>
+                  </Box>
+                  <Box>
+                    <Typography variant="caption" color="text.secondary">
+                      Spent
+                    </Typography>
+                    <Typography
+                      variant="body2"
+                      fontWeight={600}
+                      color={over ? "error.main" : "text.primary"}
+                    >
+                      {formatIDR(spent)}
+                    </Typography>
+                  </Box>
+                  <Box>
+                    <Typography variant="caption" color="text.secondary">
+                      {over ? "Over" : "Remaining"}
+                    </Typography>
+                    <Typography
+                      variant="body2"
+                      fontWeight={600}
+                      color={remaining >= 0 ? "success.main" : "error.main"}
+                    >
+                      {formatIDR(Math.abs(remaining))}
+                    </Typography>
+                  </Box>
+                </Stack>
+
+                {planned > 0 && (
+                  <LinearProgress
+                    variant="determinate"
+                    value={pct}
+                    color={over ? "error" : pct > 80 ? "warning" : "primary"}
+                    sx={{ mt: 1, borderRadius: 1, height: 4 }}
+                  />
+                )}
+              </CardContent>
+            </Card>
+          );
+        })}
+      </Stack>
+    </Box>
   );
 }
 
 export default function BudgetPage() {
   const { user } = useAuth();
-  const { categories, incomeCategories, expenseCategories, loading: categoriesLoading } = useCategories();
+  const { categories, incomeCategories, expenseCategories, loading: categoriesLoading } =
+    useCategories();
   const { currency, rate, format, loading: currencyLoading } = useCurrency();
+  const { currencies, toIDR, fromIDR, formatIDR, formatAmount } = useCurrencyConfig();
   const theme = useTheme();
-  const step = currency === "IDR" ? "1000" : "0.01";
 
   // --- Monthly plan editor ---
   const [planMonth, setPlanMonth] = useState(currentPeriod());
   const [amounts, setAmounts] = useState({});
+  const [itemCurrencies, setItemCurrencies] = useState({});
   const [planLoading, setPlanLoading] = useState(true);
   const [planError, setPlanError] = useState(null);
   const [planMessage, setPlanMessage] = useState(null);
@@ -77,12 +251,11 @@ export default function BudgetPage() {
   const [copying, setCopying] = useState(false);
 
   useEffect(() => {
-    if (currencyLoading) return;
     let active = true;
 
     supabase
       .from("budget_items")
-      .select("category_id, amount")
+      .select("category_id, amount, currency")
       .eq("month", periodKey(planMonth))
       .then(({ data, error }) => {
         if (!active) return;
@@ -90,11 +263,14 @@ export default function BudgetPage() {
         if (error) {
           setPlanError(error.message);
         } else {
-          const next = {};
+          const nextAmounts = {};
+          const nextCurrencies = {};
           for (const item of data) {
-            next[item.category_id] = String(convertFromIDR(Number(item.amount), currency, rate));
+            nextAmounts[item.category_id] = String(Number(item.amount));
+            nextCurrencies[item.category_id] = item.currency ?? "IDR";
           }
-          setAmounts(next);
+          setAmounts(nextAmounts);
+          setItemCurrencies(nextCurrencies);
           setPlanError(null);
         }
 
@@ -106,10 +282,29 @@ export default function BudgetPage() {
     return () => {
       active = false;
     };
-  }, [planMonth, currency, rate, currencyLoading]);
+  }, [planMonth]);
 
   const handleAmountChange = (categoryId, value) => {
     setAmounts((prev) => ({ ...prev, [categoryId]: value }));
+  };
+
+  const handleCurrencyChange = (categoryId, newCurrency) => {
+    const oldCurrency = itemCurrencies[categoryId] ?? "IDR";
+    const oldAmount = Number(amounts[categoryId] || 0);
+
+    if (oldCurrency !== newCurrency && oldAmount > 0) {
+      const idrAmount = toIDR(oldAmount, oldCurrency);
+      const converted = fromIDR(idrAmount, newCurrency);
+      const rounded =
+        newCurrency === "IDR"
+          ? Math.round(converted / 1000) * 1000
+          : newCurrency === "JPY"
+          ? Math.round(converted)
+          : Math.round(converted * 100) / 100;
+      setAmounts((prev) => ({ ...prev, [categoryId]: String(rounded) }));
+    }
+
+    setItemCurrencies((prev) => ({ ...prev, [categoryId]: newCurrency }));
   };
 
   const handleSavePlan = async () => {
@@ -117,11 +312,12 @@ export default function BudgetPage() {
     setPlanError(null);
     setPlanMessage(null);
 
-    const rows = categories.map((category) => ({
+    const rows = categories.map((cat) => ({
       user_id: user.id,
-      category_id: category.id,
+      category_id: cat.id,
       month: periodKey(planMonth),
-      amount: convertToIDR(Number(amounts[category.id] || 0), currency, rate),
+      amount: Number(amounts[cat.id] || 0),
+      currency: itemCurrencies[cat.id] ?? "IDR",
     }));
 
     const { error } = await supabase
@@ -143,7 +339,7 @@ export default function BudgetPage() {
     const prevPeriod = previousPeriod(planMonth);
     const { data, error } = await supabase
       .from("budget_items")
-      .select("category_id, amount")
+      .select("category_id, amount, currency")
       .eq("month", periodKey(prevPeriod));
 
     setCopying(false);
@@ -158,28 +354,51 @@ export default function BudgetPage() {
       return;
     }
 
-    const next = {};
+    const nextAmounts = {};
+    const nextCurrencies = {};
     for (const item of data) {
-      next[item.category_id] = String(convertFromIDR(Number(item.amount), currency, rate));
+      nextAmounts[item.category_id] = String(Number(item.amount));
+      nextCurrencies[item.category_id] = item.currency ?? "IDR";
     }
-    setAmounts((prev) => ({ ...prev, ...next }));
-    setCopyMessage(`Copied budget from ${formatPeriodShort(prevPeriod)}. Review and Save to keep it.`);
+    setAmounts((prev) => ({ ...prev, ...nextAmounts }));
+    setItemCurrencies((prev) => ({ ...prev, ...nextCurrencies }));
+    setCopyMessage(
+      `Copied budget from ${formatPeriodShort(prevPeriod)}. Review and Save to keep it.`,
+    );
   };
 
-  const totalIncome = incomeCategories.reduce(
-    (sum, category) => sum + Number(amounts[category.id] || 0),
+  // Totals in IDR (each category's native amount converted to IDR)
+  const totalIncomeIDR = incomeCategories.reduce(
+    (sum, cat) => sum + toIDR(Number(amounts[cat.id] || 0), itemCurrencies[cat.id] ?? "IDR"),
     0,
   );
-  const totalExpense = expenseCategories.reduce(
-    (sum, category) => sum + Number(amounts[category.id] || 0),
+  const totalExpenseIDR = expenseCategories.reduce(
+    (sum, cat) => sum + toIDR(Number(amounts[cat.id] || 0), itemCurrencies[cat.id] ?? "IDR"),
     0,
   );
-  const netPlanned = totalIncome - totalExpense;
+  const netPlannedIDR = totalIncomeIDR - totalExpenseIDR;
+
+  // Per-currency subtotals for the plan editor totals section
+  const incomeByCurrency = {};
+  for (const cat of incomeCategories) {
+    const cur = itemCurrencies[cat.id] ?? "IDR";
+    const amt = Number(amounts[cat.id] || 0);
+    if (amt > 0) incomeByCurrency[cur] = (incomeByCurrency[cur] ?? 0) + amt;
+  }
+  const expenseByCurrency = {};
+  for (const cat of expenseCategories) {
+    const cur = itemCurrencies[cat.id] ?? "IDR";
+    const amt = Number(amounts[cat.id] || 0);
+    if (amt > 0) expenseByCurrency[cur] = (expenseByCurrency[cur] ?? 0) + amt;
+  }
+  const planCurrencies = [
+    ...new Set([...Object.keys(incomeByCurrency), ...Object.keys(expenseByCurrency)]),
+  ];
 
   // --- Accumulated budget (date range) ---
   const [fromMonth, setFromMonth] = useState(currentPeriod());
   const [toMonth, setToMonth] = useState(currentPeriod());
-  const [rangeTotals, setRangeTotals] = useState([]);
+  const [rangeRawItems, setRangeRawItems] = useState([]);
   const [rangeLoading, setRangeLoading] = useState(true);
   const [rangeError, setRangeError] = useState(null);
 
@@ -188,7 +407,7 @@ export default function BudgetPage() {
 
     supabase
       .from("budget_items")
-      .select("category_id, amount")
+      .select("category_id, amount, currency")
       .gte("month", periodKey(fromMonth))
       .lte("month", periodKey(toMonth))
       .then(({ data, error }) => {
@@ -197,11 +416,7 @@ export default function BudgetPage() {
         if (error) {
           setRangeError(error.message);
         } else {
-          const sums = new Map();
-          for (const item of data) {
-            sums.set(item.category_id, (sums.get(item.category_id) ?? 0) + Number(item.amount));
-          }
-          setRangeTotals(Array.from(sums.entries()));
+          setRangeRawItems(data ?? []);
           setRangeError(null);
         }
 
@@ -213,10 +428,16 @@ export default function BudgetPage() {
     };
   }, [fromMonth, toMonth]);
 
-  const rangeRows = rangeTotals
+  // Aggregate per-category totals in IDR
+  const rangeSumsMap = new Map();
+  for (const item of rangeRawItems) {
+    const idrAmount = toIDR(Number(item.amount), item.currency ?? "IDR");
+    rangeSumsMap.set(item.category_id, (rangeSumsMap.get(item.category_id) ?? 0) + idrAmount);
+  }
+  const rangeRows = Array.from(rangeSumsMap.entries())
     .map(([categoryId, total]) => {
-      const category = categories.find((item) => item.id === categoryId);
-      return category ? { ...category, total } : null;
+      const cat = categories.find((c) => c.id === categoryId);
+      return cat ? { ...cat, total } : null;
     })
     .filter(Boolean)
     .sort((a, b) =>
@@ -224,12 +445,34 @@ export default function BudgetPage() {
     );
 
   const rangeIncomeTotal = rangeRows
-    .filter((row) => row.type === "income")
-    .reduce((sum, row) => sum + row.total, 0);
+    .filter((r) => r.type === "income")
+    .reduce((s, r) => s + r.total, 0);
   const rangeExpenseTotal = rangeRows
-    .filter((row) => row.type === "expense")
-    .reduce((sum, row) => sum + row.total, 0);
+    .filter((r) => r.type === "expense")
+    .reduce((s, r) => s + r.total, 0);
   const rangeNetTotal = rangeIncomeTotal - rangeExpenseTotal;
+
+  // Per-currency breakdown for the accumulated budget section
+  const rangeIncomeByCurrency = {};
+  const rangeExpenseByCurrency = {};
+  for (const item of rangeRawItems) {
+    const cur = item.currency ?? "IDR";
+    const amt = Number(item.amount);
+    if (amt <= 0) continue;
+    const cat = categories.find((c) => c.id === item.category_id);
+    if (!cat) continue;
+    if (cat.type === "income") {
+      rangeIncomeByCurrency[cur] = (rangeIncomeByCurrency[cur] ?? 0) + amt;
+    } else {
+      rangeExpenseByCurrency[cur] = (rangeExpenseByCurrency[cur] ?? 0) + amt;
+    }
+  }
+  const rangeCurrencies = [
+    ...new Set([
+      ...Object.keys(rangeIncomeByCurrency),
+      ...Object.keys(rangeExpenseByCurrency),
+    ]),
+  ];
 
   // --- History: budget vs actual for a single period ---
   const [historyPeriod, setHistoryPeriod] = useState(previousPeriod(currentPeriod()));
@@ -243,10 +486,13 @@ export default function BudgetPage() {
     const { start, end } = periodRange(historyPeriod);
 
     Promise.all([
-      supabase.from("budget_items").select("category_id, amount").eq("month", periodKey(historyPeriod)),
+      supabase
+        .from("budget_items")
+        .select("category_id, amount, currency")
+        .eq("month", periodKey(historyPeriod)),
       supabase
         .from("transactions")
-        .select("category_id, type, amount, occurred_on")
+        .select("category_id, type, amount, currency, occurred_on")
         .gte("occurred_on", start)
         .lte("occurred_on", end),
     ]).then(([budgetRes, txRes]) => {
@@ -270,7 +516,12 @@ export default function BudgetPage() {
     };
   }, [historyPeriod]);
 
-  const historyResult = buildPlanVsActualRows(categories, historyBudgetItems, historyTransactions);
+  const historyResult = buildPlanVsActualRows(
+    categories,
+    historyBudgetItems,
+    historyTransactions,
+    toIDR,
+  );
 
   // --- Savings simulation ---
   const [savingsFrom, setSavingsFrom] = useState(currentPeriod());
@@ -292,12 +543,12 @@ export default function BudgetPage() {
     Promise.all([
       supabase
         .from("transactions")
-        .select("type, amount, occurred_on")
+        .select("type, amount, currency, occurred_on")
         .gte("occurred_on", start)
         .lte("occurred_on", end),
       supabase
         .from("budget_items")
-        .select("category_id, amount, month")
+        .select("category_id, amount, currency, month")
         .gte("month", periodKey(periods[0]))
         .lte("month", periodKey(periods[periods.length - 1])),
     ]).then(([txRes, budgetRes]) => {
@@ -321,7 +572,7 @@ export default function BudgetPage() {
     };
   }, [savingsFrom, savingsTo]);
 
-  const categoryTypeById = new Map(categories.map((category) => [category.id, category.type]));
+  const categoryTypeById = new Map(categories.map((cat) => [cat.id, cat.type]));
   const today = todayString();
 
   const savingsRowsWithoutCumulative = savingsPeriods.map((period) => {
@@ -331,23 +582,23 @@ export default function BudgetPage() {
     let net;
     if (isRealized) {
       const periodTransactions = savingsTransactions.filter(
-        (transaction) => transaction.occurred_on >= start && transaction.occurred_on <= end,
+        (t) => t.occurred_on >= start && t.occurred_on <= end,
       );
       const income = periodTransactions
-        .filter((transaction) => transaction.type === "income")
-        .reduce((sum, transaction) => sum + Number(transaction.amount), 0);
+        .filter((t) => t.type === "income")
+        .reduce((sum, t) => sum + toIDR(Number(t.amount), t.currency ?? "IDR"), 0);
       const expense = periodTransactions
-        .filter((transaction) => transaction.type === "expense")
-        .reduce((sum, transaction) => sum + Number(transaction.amount), 0);
+        .filter((t) => t.type === "expense")
+        .reduce((sum, t) => sum + toIDR(Number(t.amount), t.currency ?? "IDR"), 0);
       net = income - expense;
     } else {
       const periodItems = savingsBudgetItems.filter((item) => item.month === periodKey(period));
       const income = periodItems
         .filter((item) => categoryTypeById.get(item.category_id) === "income")
-        .reduce((sum, item) => sum + Number(item.amount), 0);
+        .reduce((sum, item) => sum + toIDR(Number(item.amount), item.currency ?? "IDR"), 0);
       const expense = periodItems
         .filter((item) => categoryTypeById.get(item.category_id) === "expense")
-        .reduce((sum, item) => sum + Number(item.amount), 0);
+        .reduce((sum, item) => sum + toIDR(Number(item.amount), item.currency ?? "IDR"), 0);
       net = income - expense;
     }
 
@@ -413,7 +664,7 @@ export default function BudgetPage() {
           </Alert>
         )}
 
-        {planLoading || categoriesLoading || currencyLoading ? (
+        {planLoading || categoriesLoading ? (
           <Box sx={{ display: "flex", justifyContent: "center", py: 4 }}>
             <CircularProgress />
           </Box>
@@ -432,8 +683,14 @@ export default function BudgetPage() {
                   key={category.id}
                   category={category}
                   amount={amounts[category.id] ?? "0"}
-                  step={step}
-                  onChange={(event) => handleAmountChange(category.id, event.target.value)}
+                  currency={itemCurrencies[category.id] ?? "IDR"}
+                  currencies={currencies}
+                  toIDR={toIDR}
+                  formatIDR={formatIDR}
+                  onAmountChange={(value) => handleAmountChange(category.id, value)}
+                  onCurrencyChange={(newCurrency) =>
+                    handleCurrencyChange(category.id, newCurrency)
+                  }
                 />
               ))
             )}
@@ -451,32 +708,73 @@ export default function BudgetPage() {
                   key={category.id}
                   category={category}
                   amount={amounts[category.id] ?? "0"}
-                  step={step}
-                  onChange={(event) => handleAmountChange(category.id, event.target.value)}
+                  currency={itemCurrencies[category.id] ?? "IDR"}
+                  currencies={currencies}
+                  toIDR={toIDR}
+                  formatIDR={formatIDR}
+                  onAmountChange={(value) => handleAmountChange(category.id, value)}
+                  onCurrencyChange={(newCurrency) =>
+                    handleCurrencyChange(category.id, newCurrency)
+                  }
                 />
               ))
             )}
 
             <Divider sx={{ my: 2 }} />
 
-            <Stack spacing={0.5} sx={{ mb: 2 }}>
-              <Stack direction="row" justifyContent="space-between">
-                <Typography variant="body2">Total planned income</Typography>
-                <Typography variant="body2">{formatCurrency(totalIncome, currency)}</Typography>
-              </Stack>
-              <Stack direction="row" justifyContent="space-between">
-                <Typography variant="body2">Total planned expense</Typography>
-                <Typography variant="body2">{formatCurrency(totalExpense, currency)}</Typography>
-              </Stack>
-              <Stack direction="row" justifyContent="space-between">
-                <Typography variant="subtitle2">Net planned</Typography>
-                <Typography
-                  variant="subtitle2"
-                  color={netPlanned >= 0 ? "success.main" : "error.main"}
-                >
-                  {formatCurrency(netPlanned, currency)}
-                </Typography>
-              </Stack>
+            {/* Per-currency subtotals + IDR grand total */}
+            <Table size="small" sx={{ mb: 1.5 }}>
+              <TableHead>
+                <TableRow>
+                  <TableCell sx={{ py: 0.5, pl: 0, fontWeight: 600 }}>Currency</TableCell>
+                  <TableCell align="right" sx={{ py: 0.5, color: "success.main", fontWeight: 600 }}>
+                    Income
+                  </TableCell>
+                  <TableCell align="right" sx={{ py: 0.5, pr: 0, color: "error.main", fontWeight: 600 }}>
+                    Expense
+                  </TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {planCurrencies.map((cur) => (
+                  <TableRow key={cur}>
+                    <TableCell sx={{ py: 0.5, pl: 0 }}>{cur}</TableCell>
+                    <TableCell align="right" sx={{ py: 0.5 }}>
+                      {incomeByCurrency[cur] != null
+                        ? formatAmount(incomeByCurrency[cur], cur)
+                        : "—"}
+                    </TableCell>
+                    <TableCell align="right" sx={{ py: 0.5, pr: 0 }}>
+                      {expenseByCurrency[cur] != null
+                        ? formatAmount(expenseByCurrency[cur], cur)
+                        : "—"}
+                    </TableCell>
+                  </TableRow>
+                ))}
+                {planCurrencies.length > 1 && (
+                  <TableRow sx={{ "& td": { borderTop: 1, borderColor: "divider" } }}>
+                    <TableCell sx={{ py: 0.5, pl: 0, fontWeight: 600, fontSize: "0.75rem", color: "text.secondary" }}>
+                      Total (IDR equiv.)
+                    </TableCell>
+                    <TableCell align="right" sx={{ py: 0.5, fontWeight: 600 }}>
+                      {format(totalIncomeIDR)}
+                    </TableCell>
+                    <TableCell align="right" sx={{ py: 0.5, pr: 0, fontWeight: 600 }}>
+                      {format(totalExpenseIDR)}
+                    </TableCell>
+                  </TableRow>
+                )}
+              </TableBody>
+            </Table>
+
+            <Stack direction="row" justifyContent="space-between" sx={{ mb: 2 }}>
+              <Typography variant="subtitle2">Net planned</Typography>
+              <Typography
+                variant="subtitle2"
+                color={netPlannedIDR >= 0 ? "success.main" : "error.main"}
+              >
+                {format(netPlannedIDR)}
+              </Typography>
             </Stack>
 
             <Stack direction="row" spacing={2}>
@@ -538,7 +836,7 @@ export default function BudgetPage() {
                 <TableRow>
                   <TableCell>Category</TableCell>
                   <TableCell>Type</TableCell>
-                  <TableCell align="right">Total</TableCell>
+                  <TableCell align="right">Total (IDR)</TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
@@ -552,24 +850,61 @@ export default function BudgetPage() {
               </TableBody>
             </Table>
 
-            <Stack spacing={0.5} sx={{ mt: 2 }}>
-              <Stack direction="row" justifyContent="space-between">
-                <Typography variant="body2">Total income</Typography>
-                <Typography variant="body2">{format(rangeIncomeTotal)}</Typography>
-              </Stack>
-              <Stack direction="row" justifyContent="space-between">
-                <Typography variant="body2">Total expense</Typography>
-                <Typography variant="body2">{format(rangeExpenseTotal)}</Typography>
-              </Stack>
-              <Stack direction="row" justifyContent="space-between">
-                <Typography variant="subtitle2">Net</Typography>
-                <Typography
-                  variant="subtitle2"
-                  color={rangeNetTotal >= 0 ? "success.main" : "error.main"}
-                >
-                  {format(rangeNetTotal)}
-                </Typography>
-              </Stack>
+            {/* Per-currency breakdown for the range */}
+            {rangeCurrencies.length > 0 && (
+              <Table size="small" sx={{ mt: 2, mb: 1 }}>
+                <TableHead>
+                  <TableRow>
+                    <TableCell sx={{ py: 0.5, pl: 0, fontWeight: 600 }}>Currency</TableCell>
+                    <TableCell align="right" sx={{ py: 0.5, color: "success.main", fontWeight: 600 }}>
+                      Income
+                    </TableCell>
+                    <TableCell align="right" sx={{ py: 0.5, pr: 0, color: "error.main", fontWeight: 600 }}>
+                      Expense
+                    </TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {rangeCurrencies.map((cur) => (
+                    <TableRow key={cur}>
+                      <TableCell sx={{ py: 0.5, pl: 0 }}>{cur}</TableCell>
+                      <TableCell align="right" sx={{ py: 0.5 }}>
+                        {rangeIncomeByCurrency[cur] != null
+                          ? formatAmount(rangeIncomeByCurrency[cur], cur)
+                          : "—"}
+                      </TableCell>
+                      <TableCell align="right" sx={{ py: 0.5, pr: 0 }}>
+                        {rangeExpenseByCurrency[cur] != null
+                          ? formatAmount(rangeExpenseByCurrency[cur], cur)
+                          : "—"}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                  {rangeCurrencies.length > 1 && (
+                    <TableRow sx={{ "& td": { borderTop: 1, borderColor: "divider" } }}>
+                      <TableCell sx={{ py: 0.5, pl: 0, fontWeight: 600, fontSize: "0.75rem", color: "text.secondary" }}>
+                        Total (IDR equiv.)
+                      </TableCell>
+                      <TableCell align="right" sx={{ py: 0.5, fontWeight: 600 }}>
+                        {format(rangeIncomeTotal)}
+                      </TableCell>
+                      <TableCell align="right" sx={{ py: 0.5, pr: 0, fontWeight: 600 }}>
+                        {format(rangeExpenseTotal)}
+                      </TableCell>
+                    </TableRow>
+                  )}
+                </TableBody>
+              </Table>
+            )}
+
+            <Stack direction="row" justifyContent="space-between">
+              <Typography variant="subtitle2">Net</Typography>
+              <Typography
+                variant="subtitle2"
+                color={rangeNetTotal >= 0 ? "success.main" : "error.main"}
+              >
+                {format(rangeNetTotal)}
+              </Typography>
             </Stack>
           </>
         )}
@@ -625,8 +960,8 @@ export default function BudgetPage() {
           Savings simulation
         </Typography>
         <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-          Mixes actual results for periods that have ended with your plan for the current and
-          future periods.
+          Mixes actual results for periods that have ended with your plan for the current and future
+          periods.
         </Typography>
 
         <Stack direction="row" spacing={2} sx={{ mb: 2 }}>
@@ -668,13 +1003,15 @@ export default function BudgetPage() {
                   dataKey: "realized",
                   label: "Realized (actual)",
                   color: theme.palette.success.main,
-                  valueFormatter: (value) => (value == null ? "" : formatCurrency(value, currency)),
+                  valueFormatter: (value) =>
+                    value == null ? "" : formatCurrency(value, currency),
                 },
                 {
                   dataKey: "projected",
                   label: "Projected (planned)",
                   color: theme.palette.grey[500],
-                  valueFormatter: (value) => (value == null ? "" : formatCurrency(value, currency)),
+                  valueFormatter: (value) =>
+                    value == null ? "" : formatCurrency(value, currency),
                 },
               ]}
               height={300}
@@ -729,6 +1066,9 @@ export default function BudgetPage() {
           </>
         )}
       </Box>
+
+      <Divider sx={{ mb: 4 }} />
+      <TripBudgetSection />
     </Box>
   );
 }

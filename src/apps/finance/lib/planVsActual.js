@@ -1,18 +1,24 @@
 // Builds per-category plan-vs-actual rows for a single pay period.
 //
 // `categories` — from useCategories()
-// `budgetItems` — budget_items rows for the period (category_id, amount)
+// `budgetItems` — budget_items rows for the period (category_id, amount, currency)
 // `transactions` — transaction rows within the period's date range
-//   (category_id, type, amount)
-export function buildPlanVsActualRows(categories, budgetItems, transactions) {
+//   (category_id, type, amount, currency)
+// `toIDR` — optional conversion function (amount, currencyCode) → IDR amount.
+//   Defaults to identity so callers that don't pass it keep working.
+export function buildPlanVsActualRows(categories, budgetItems, transactions, toIDR = (a) => a) {
   const plannedByCategory = new Map(
-    budgetItems.map((item) => [item.category_id, Number(item.amount)]),
+    budgetItems.map((item) => [
+      item.category_id,
+      toIDR(Number(item.amount), item.currency ?? "IDR"),
+    ]),
   );
   const actualByCategory = new Map();
   for (const transaction of transactions) {
     actualByCategory.set(
       transaction.category_id,
-      (actualByCategory.get(transaction.category_id) ?? 0) + Number(transaction.amount),
+      (actualByCategory.get(transaction.category_id) ?? 0) +
+        toIDR(Number(transaction.amount), transaction.currency ?? "IDR"),
     );
   }
 

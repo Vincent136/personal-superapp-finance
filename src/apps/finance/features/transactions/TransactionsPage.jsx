@@ -15,6 +15,7 @@ import {
   TextField,
   ToggleButton,
   ToggleButtonGroup,
+  Tooltip,
   Typography,
 } from "@mui/material";
 import DeleteIcon from "@mui/icons-material/Delete";
@@ -23,7 +24,8 @@ import { supabase } from "../../../../lib/supabase";
 import { useAuth } from "../../../../hooks/useAuth";
 import { useCategories } from "../../hooks/useCategories";
 import { useCurrency } from "../../hooks/useCurrency";
-import { convertToIDR, currentPeriod, formatPeriodRange, periodRange } from "../../lib/format";
+import { useCurrencyConfig } from "../../../../hooks/useCurrencyConfig";
+import { currentPeriod, formatPeriodRange, periodRange } from "../../lib/format";
 
 function todayString() {
   const now = new Date();
@@ -33,11 +35,13 @@ function todayString() {
 export default function TransactionsPage() {
   const { user } = useAuth();
   const { incomeCategories, expenseCategories, loading: categoriesLoading } = useCategories();
-  const { currency, rate, format, loading: currencyLoading } = useCurrency();
+  const { format, loading: currencyLoading } = useCurrency();
+  const { currencies, toIDR, formatAmount, formatIDR } = useCurrencyConfig();
 
   // --- Entry form ---
   const [type, setType] = useState("expense");
   const [categoryId, setCategoryId] = useState("");
+  const [txCurrency, setTxCurrency] = useState("IDR");
   const [amount, setAmount] = useState("");
   const [occurredOn, setOccurredOn] = useState(todayString());
   const [note, setNote] = useState("");
@@ -62,7 +66,7 @@ export default function TransactionsPage() {
     const { start, end } = periodRange(period);
     const { data, error } = await supabase
       .from("transactions")
-      .select("id, type, amount, occurred_on, note, categories(name)")
+      .select("id, type, amount, currency, occurred_on, note, categories(name)")
       .gte("occurred_on", start)
       .lte("occurred_on", end)
       .order("occurred_on", { ascending: false })
@@ -81,7 +85,7 @@ export default function TransactionsPage() {
 
     supabase
       .from("transactions")
-      .select("id, type, amount, occurred_on, note, categories(name)")
+      .select("id, type, amount, currency, occurred_on, note, categories(name)")
       .gte("occurred_on", start)
       .lte("occurred_on", end)
       .order("occurred_on", { ascending: false })
@@ -119,7 +123,8 @@ export default function TransactionsPage() {
       user_id: user.id,
       category_id: categoryId,
       type,
-      amount: convertToIDR(Number(amount), currency, rate),
+      amount: Number(amount),
+      currency: txCurrency,
       occurred_on: occurredOn,
       note: note.trim() || null,
     });
@@ -188,16 +193,39 @@ export default function TransactionsPage() {
             </TextField>
           )}
 
-          <TextField
-            type="number"
-            label={`Amount (${currency})`}
-            value={amount}
-            onChange={(event) => setAmount(event.target.value)}
-            size="small"
-            fullWidth
-            required
-            slotProps={{ input: { inputProps: { min: 0, step: currency === "IDR" ? "1000" : "0.01" } } }}
-          />
+          <Stack direction="row" spacing={1}>
+            <TextField
+              select
+              label="Currency"
+              value={txCurrency}
+              onChange={(e) => setTxCurrency(e.target.value)}
+              size="small"
+              sx={{ width: 100 }}
+            >
+              {currencies.map((c) => (
+                <MenuItem key={c.code} value={c.code}>
+                  {c.code}
+                </MenuItem>
+              ))}
+            </TextField>
+            <TextField
+              type="number"
+              label="Amount"
+              value={amount}
+              onChange={(event) => setAmount(event.target.value)}
+              size="small"
+              fullWidth
+              required
+              slotProps={{
+                input: {
+                  inputProps: {
+                    min: 0,
+                    step: txCurrency === "IDR" ? "1000" : txCurrency === "JPY" ? "1" : "0.01",
+                  },
+                },
+              }}
+            />
+          </Stack>
 
           <TextField
             type="date"
@@ -290,17 +318,23 @@ export default function TransactionsPage() {
                     : transaction.occurred_on
                 }
               />
-              <Typography
-                variant="body2"
-                sx={{
-                  mr: 6,
-                  fontWeight: 600,
-                  color: transaction.type === "income" ? "success.main" : "error.main",
-                }}
-              >
-                {transaction.type === "income" ? "+" : "-"}
-                {format(transaction.amount)}
-              </Typography>
+              <Box sx={{ mr: 6, textAlign: "right" }}>
+                <Typography
+                  variant="body2"
+                  fontWeight={600}
+                  color={transaction.type === "income" ? "success.main" : "error.main"}
+                >
+                  {transaction.type === "income" ? "+" : "-"}
+                  {formatAmount(transaction.amount, transaction.currency ?? "IDR")}
+                </Typography>
+                {(transaction.currency ?? "IDR") !== "IDR" && (
+                  <Tooltip title="IDR equivalent">
+                    <Typography variant="caption" color="text.secondary">
+                      ≈ {formatIDR(toIDR(Number(transaction.amount), transaction.currency))}
+                    </Typography>
+                  </Tooltip>
+                )}
+              </Box>
             </ListItem>
           ))}
         </List>
