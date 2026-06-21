@@ -52,6 +52,10 @@ export default function LogCardioDialog({ open, onClose, onSave }) {
   // Running-specific
   const [paceMinPerKm, setPaceMinPerKm] = useState("");
 
+  // Cycling-specific
+  const [cycleType, setCycleType] = useState("outdoor");
+  const [calories, setCalories] = useState("");
+
   // Shared
   const [notes, setNotes] = useState("");
 
@@ -68,6 +72,7 @@ export default function LogCardioDialog({ open, onClose, onSave }) {
     if (type === "treadmill") return { ...shared, speedKmh: num(speedKmh), inclinePct: num(inclinePct) };
     if (type === "walking")   return { ...shared, steps: num(steps) };
     if (type === "running")   return { ...shared, paceMinPerKm: num(paceMinPerKm) };
+    if (type === "cycling")   return { ...shared, cycleType, calories: num(calories) };
     return base;
   }
 
@@ -88,6 +93,8 @@ export default function LogCardioDialog({ open, onClose, onSave }) {
     setInclinePct("");
     setSteps("");
     setPaceMinPerKm("");
+    setCycleType("outdoor");
+    setCalories("");
     setNotes("");
   }
 
@@ -190,6 +197,38 @@ export default function LogCardioDialog({ open, onClose, onSave }) {
               <NumField label="Duration (minutes)" value={durationMinutes} onChange={setDurationMinutes} required />
               <NumField label="Distance (km)" value={distanceKm} onChange={setDistanceKm} step={0.1} />
               <NumField label="Pace (min/km)" value={paceMinPerKm} onChange={setPaceMinPerKm} step={0.1} />
+            </>
+          )}
+
+          {/* Cycling-specific fields */}
+          {type === "cycling" && (
+            <>
+              <Box>
+                <Typography variant="body2" color="text.secondary" gutterBottom>
+                  Ride type
+                </Typography>
+                <ToggleButtonGroup
+                  value={cycleType}
+                  exclusive
+                  onChange={(_, v) => v && setCycleType(v)}
+                  size="small"
+                  sx={{ gap: 0.5 }}
+                >
+                  {["outdoor", "indoor", "commute"].map((ct) => (
+                    <ToggleButton key={ct} value={ct} sx={{ textTransform: "capitalize" }}>
+                      {ct}
+                    </ToggleButton>
+                  ))}
+                </ToggleButtonGroup>
+              </Box>
+              <NumField label="Duration (minutes)" value={durationMinutes} onChange={setDurationMinutes} required />
+              <NumField label="Distance (km)" value={distanceKm} onChange={setDistanceKm} step={0.1} />
+              {durationMinutes && distanceKm && Number(durationMinutes) > 0 && Number(distanceKm) > 0 && (
+                <Typography variant="caption" color="text.secondary">
+                  Avg speed: {(Number(distanceKm) / (Number(durationMinutes) / 60)).toFixed(1)} km/h
+                </Typography>
+              )}
+              <NumField label="Calories (optional)" value={calories} onChange={setCalories} />
             </>
           )}
 

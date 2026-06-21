@@ -2,6 +2,7 @@ import StairsIcon from "@mui/icons-material/Stairs";
 import FitnessCenterIcon from "@mui/icons-material/FitnessCenter";
 import DirectionsWalkIcon from "@mui/icons-material/DirectionsWalk";
 import DirectionsRunIcon from "@mui/icons-material/DirectionsRun";
+import DirectionsBikeIcon from "@mui/icons-material/DirectionsBike";
 
 export const TYPE_CONFIG = {
   stairs: {
@@ -74,7 +75,25 @@ export const TYPE_CONFIG = {
         .filter(Boolean)
         .join(" · "),
   },
+  cycling: {
+    label: "Cycling",
+    Icon: DirectionsBikeIcon,
+    color: "#00897B",
+    chartLabel: "km",
+    getMetric: (r) => r.distanceKm ?? 0,
+    getSummary: (r) =>
+      [
+        r.durationMinutes ? `${r.durationMinutes} min` : null,
+        r.distanceKm != null ? `${r.distanceKm} km` : null,
+        r.distanceKm && r.durationMinutes
+          ? `${(r.distanceKm / (r.durationMinutes / 60)).toFixed(1)} km/h`
+          : null,
+        r.cycleType ?? null,
+      ]
+        .filter(Boolean)
+        .join(" · "),
+  },
 };
 
-export const ORDERED_TYPES = ["stairs", "treadmill", "walking", "running"];
+export const ORDERED_TYPES = ["stairs", "treadmill", "walking", "running", "cycling"];
 

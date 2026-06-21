@@ -4,10 +4,15 @@ import { useAuth } from "../../../hooks/useAuth";
 
 // Maps the legacy localStorage key to the Supabase table name.
 const TABLE_MAP = {
-  health_cardio:  "health_cardio",
-  health_sleep:   "health_sleep",
-  health_body:    "health_body",
-  health_journal: "health_journal",
+  health_cardio:      "health_cardio",
+  health_sleep:       "health_sleep",
+  health_body:        "health_body",
+  health_journal:     "health_journal",
+  health_noon_sleep:  "health_noon_sleep",
+  health_poop:        "health_poop",
+  health_cycling:     "health_cycling",
+  health_meals:       "health_meals",
+  health_drinks:      "health_drinks",
 };
 
 // Converts a Supabase row into the flat record shape components expect.
